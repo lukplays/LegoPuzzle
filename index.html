@@ -355,9 +355,14 @@ function onNewGame(){
 }
 function continueGame(){
   const ok=loadSave(); if(!ok){onNewGame();return;}
+  IMG_W=orientation==='horizontal'?1408:768;
+  IMG_H=orientation==='horizontal'?768:1408;
+  imgCanvas.width=IMG_W;imgCanvas.height=IMG_H;
   document.getElementById('menu').style.display='none';
   document.getElementById('game').style.display='flex';
+  const myGen=++_loadGen;
   loadImageThen(pname(curIdx,orientation),()=>{
+    if(myGen!==_loadGen) return;
     hideWin();dragging=null;buildPieceCache();updateTimerDisplay();startTimer();scheduleRender();
   });
 }
@@ -444,6 +449,7 @@ function ovOrient(o){
 const canvas=document.getElementById('c');
 const ctx=canvas.getContext('2d',{alpha:false});
 
+let _loadGen=0; // numer generacji — anuluje stare załadowania obrazków
 function initGame(){
   const cfg=DIFF_CFG[difficulty][orientation==='horizontal'?'h':'v'];
   ROWS=cfg.rows;COLS=cfg.cols;
@@ -451,7 +457,8 @@ function initGame(){
   IMG_H=orientation==='horizontal'?768:1408;
   imgCanvas.width=IMG_W;imgCanvas.height=IMG_H;
   recalcLayout();
-  loadImageThen(pname(curIdx,orientation),newGame);
+  const myGen=++_loadGen;
+  loadImageThen(pname(curIdx,orientation),()=>{ if(myGen===_loadGen) newGame(); });
 }
 function loadImageThen(name,cb){
   const exts=['jpg','jpeg','png','webp']; let i=0;
