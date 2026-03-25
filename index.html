@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Puzzle</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { width:100%; height:100%; overflow:hidden; font-family:'Segoe UI',sans-serif; background:#0d0d1a; }
+
+/* ── MENU ── */
+#menu {
+  position:fixed; inset:0; z-index:100;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  background:#000;
+}
+#menuBg { position:absolute; inset:0; background-size:cover; background-position:center; }
+#menuContent { position:relative; z-index:2; display:flex; flex-direction:column; align-items:center; gap:18px; }
+.menu-btn {
+  min-width:210px; padding:15px 38px; font-size:19px; font-weight:600; letter-spacing:0.06em;
+  color:#fff; background:rgba(0,0,0,0.5); border:2px solid rgba(255,255,255,0.7);
+  border-radius:50px; cursor:pointer; backdrop-filter:blur(6px);
+  transition:background 0.2s, transform 0.15s; user-select:none;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.menu-btn:hover  { background:rgba(255,255,255,0.18); transform:scale(1.04); }
+.menu-btn:active { transform:scale(0.97); }
+.menu-btn.easy   { border-color:#6dde6d; color:#6dde6d; }
+.menu-btn.medium { border-color:#f0c040; color:#f0c040; }
+.menu-btn.hard   { border-color:#f05050; color:#f05050; }
+.menu-btn.cont   { border-color:#7dd3fc; color:#7dd3fc; }
+
+/* ── GALLERY ── */
+#gallery {
+  position:fixed; inset:0; z-index:100;
+  display:none; flex-direction:column; background:#0d0d1a;
+}
+#galleryHeader {
+  flex-shrink:0; padding:10px 16px;
+  background:rgba(0,0,0,0.7);
+  display:flex; align-items:center; gap:10px;
+}
+#galleryHeader h2 { color:#fff; font-size:17px; font-weight:700; flex:1; text-align:center; }
+#galleryGrid {
+  flex:1; overflow-y:auto; padding:14px;
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(130px,1fr)); gap:12px;
+  align-content:start;
+}
+.pcard { display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer; transition:transform 0.15s; }
+.pcard:active { transform:scale(0.95); }
+.pthumb {
+  width:100%; aspect-ratio:16/9; border-radius:9px; overflow:hidden;
+  position:relative; border:2px solid rgba(255,255,255,0.12); background:#1a1a2e;
+}
+.pthumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.plock { position:absolute; inset:0; background:rgba(0,0,0,0.68); display:flex; align-items:center; justify-content:center; font-size:24px; }
+.pcard.on .pthumb { border-color:rgba(255,255,255,0.32); }
+.pcard.on:hover .pthumb { border-color:#7dd3fc; }
+.pstars { display:flex; gap:3px; }
+.pstar { font-size:15px; }
+.pnum  { color:rgba(255,255,255,0.4); font-size:11px; }
+
+/* ── OVERLAY ── */
+#overlay {
+  position:fixed; inset:0; z-index:200;
+  display:none; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.78); backdrop-filter:blur(3px);
+}
+#overlayBox {
+  display:flex; flex-direction:column; align-items:center; gap:14px;
+  padding:28px 22px; background:rgba(15,15,35,0.97);
+  border:1px solid rgba(255,255,255,0.14); border-radius:20px; min-width:240px;
+}
+#overlayBox h3 { color:rgba(255,255,255,0.65); font-size:13px; letter-spacing:0.1em; text-transform:uppercase; }
+.ov-cancel { font-size:13px !important; min-width:0 !important; padding:7px 20px !important; opacity:0.6; margin-top:4px; }
+
+/* ── GAME ── */
+#game { position:fixed; inset:0; display:none; flex-direction:column; }
+#ui {
+  flex-shrink:0; height:40px;
+  display:flex; gap:8px; align-items:center; justify-content:center;
+  background:rgba(0,0,0,0.82); padding:0 12px; z-index:10; white-space:nowrap;
+}
+.ui-btn {
+  padding:4px 14px; font-size:13px; font-weight:600; color:#fff;
+  background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.28);
+  border-radius:20px; cursor:pointer; transition:background 0.2s; white-space:nowrap; flex-shrink:0;
+}
+.ui-btn:hover { background:rgba(255,255,255,0.25); }
+#timer,#counter { color:rgba(255,255,255,0.9); font-size:13px; font-weight:600; white-space:nowrap; flex-shrink:0; }
+.sep { color:rgba(255,255,255,0.28); flex-shrink:0; }
+#canvasWrap { flex:1; position:relative; overflow:hidden; }
+#c { position:absolute; top:0; left:0; touch-action:none; display:block; }
+
+/* ── WIN ── */
+#winScreen {
+  display:none; position:fixed; inset:0; z-index:50;
+  flex-direction:column; align-items:center; justify-content:center; pointer-events:none;
+}
+#winScreen.active { display:flex; pointer-events:all; }
+#confettiCanvas { position:fixed; inset:0; pointer-events:none; z-index:51; }
+#winBox {
+  position:relative; z-index:52;
+  display:flex; flex-direction:column; align-items:center; gap:13px;
+  padding:28px 24px; background:rgba(8,8,22,0.88);
+  border:1px solid rgba(255,255,255,0.18); border-radius:22px;
+  backdrop-filter:blur(12px); max-width:88vw;
+  opacity:0; transform:scale(0.75); transition:opacity 0.5s ease, transform 0.5s ease;
+}
+#winBox.show { opacity:1; transform:scale(1); }
+#winTitle {
+  font-size:clamp(20px,5.5vw,50px); font-weight:800; color:#fff;
+  text-shadow:0 2px 20px rgba(0,0,0,0.8); text-align:center; line-height:1.25;
+}
+#winStarRow { display:flex; gap:9px; font-size:34px; animation:starPop 0.4s ease 0.15s both; }
+@keyframes starPop { from{transform:scale(0.2);opacity:0} to{transform:scale(1);opacity:1} }
+#winTime { font-size:clamp(14px,3vw,22px); color:rgba(255,255,255,0.85); font-weight:600; }
+.wbrow { display:flex; flex-wrap:wrap; gap:11px; justify-content:center; margin-top:4px; }
+.wbtn {
+  padding:11px 26px; font-size:15px; font-weight:700; color:#fff;
+  background:rgba(255,255,255,0.1); border:2px solid rgba(255,255,255,0.55);
+  border-radius:50px; cursor:pointer; transition:background 0.2s, transform 0.15s;
+}
+.wbtn:hover  { background:rgba(255,255,255,0.22); transform:scale(1.04); }
+.wbtn:active { transform:scale(0.97); }
+.wbtn.next   { border-color:#6dde6d; color:#6dde6d; }
+
+/* ── PREVIEW ── */
+#previewOverlay {
+  position:fixed; inset:0; z-index:300;
+  display:flex; align-items:center; justify-content:center;
+  pointer-events:none;
+}
+#previewImg {
+  max-width:50vw; max-height:50vh;
+  border-radius:14px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.75);
+  transform:scale(0.05);
+  opacity:0;
+  transition:transform 0.22s cubic-bezier(0.34,1.56,0.64,1), opacity 0.18s ease;
+  object-fit:contain;
+  user-select:none; pointer-events:none; display:block;
+}
+#previewImg.show { transform:scale(1); opacity:1; }
+</style>
+</head>
+<body>
+
+<!-- MENU -->
+<div id="menu">
+  <div id="menuBg"></div>
+  <div id="menuContent">
+    <button class="menu-btn cont" id="btnContinue" style="display:none" onclick="continueGame()">▶ Continue</button>
+    <button class="menu-btn" onclick="onNewGame()">▶ New Game</button>
+  </div>
+</div>
+
+<!-- GALLERY -->
+<div id="gallery">
+  <div id="galleryHeader">
+    <button class="ui-btn" onclick="showMenu()" style="font-size:14px">← Back</button>
+    <h2>Choose Puzzle</h2>
+    <div style="width:58px"></div>
+  </div>
+  <div id="galleryGrid"></div>
+</div>
+
+<!-- OVERLAY (difficulty + orientation) -->
+<div id="overlay">
+  <div id="overlayBox">
+    <div id="ovStep1" style="display:flex;flex-direction:column;align-items:center;gap:12px">
+      <h3>Select Difficulty</h3>
+      <button class="menu-btn easy"   onclick="ovDiff('easy')">Easy <span id="ob-easy"></span></button>
+      <button class="menu-btn medium" onclick="ovDiff('medium')">Medium <span id="ob-medium"></span></button>
+      <button class="menu-btn hard"   onclick="ovDiff('hard')">Hard <span id="ob-hard"></span></button>
+      <button class="menu-btn ov-cancel" onclick="closeOverlay()">Cancel</button>
+    </div>
+    <div id="ovStep2" style="display:none;flex-direction:column;align-items:center;gap:12px">
+      <h3>Select Orientation</h3>
+      <button class="menu-btn" onclick="ovOrient('horizontal')">⬛ Horizontal</button>
+      <button class="menu-btn" onclick="ovOrient('vertical')">▮ Vertical</button>
+      <button class="menu-btn ov-cancel" onclick="ovBack()">← Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="game">
+  <div id="ui">
+    <button class="ui-btn" onclick="goMenu()">☰ Menu</button>
+    <button class="ui-btn" id="btnPreview"
+      style="font-size:16px; padding:2px 10px; line-height:1;"
+      onmousedown="showPreview()" onmouseup="hidePreview()" onmouseleave="hidePreview()"
+      ontouchstart="showPreview(event)" ontouchend="hidePreview()" ontouchcancel="hidePreview()">🖼️</button>
+    <span class="sep">|</span>
+    <span id="counter">0 / 0</span>
+    <span class="sep">|</span>
+    <span id="timer">0:00</span>
+  </div>
+  <div id="canvasWrap"><canvas id="c"></canvas></div>
+</div>
+
+<!-- PREVIEW -->
+<div id="previewOverlay">
+  <img id="previewImg" src="" alt="preview">
+</div>
+
+<!-- WIN -->
+<canvas id="confettiCanvas"></canvas>
+<div id="winScreen">
+  <div id="winBox">
+    <div id="winTitle">Congratulations!</div>
+    <div id="winStarRow"></div>
+    <div id="winTime"></div>
+    <div class="wbrow">
+      <button class="wbtn next" id="btnNext" onclick="nextPuzzle()">Next Puzzle ▶</button>
+      <button class="wbtn" onclick="goMenu()">↩ Back to Menu</button>
+    </div>
+  </div>
+</div>
+
+<audio id="winSound"   src="wygrana.mp3"       preload="auto"></audio>
+<audio id="clickSound" src="puzzle_click.ogg"  preload="auto"></audio>
+<audio id="btnSound"   src="buttons_click.ogg" preload="auto"></audio>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════
+// CONFIG — add puzzles by increasing PUZZLE_COUNT
+// ═══════════════════════════════════════════════
+const PUZZLE_COUNT = 50;
+const DIFF_CFG = {
+  easy:   { h:{rows:5, cols:7 }, v:{rows:7, cols:4 } },
+  medium: { h:{rows:10,cols:14}, v:{rows:14,cols:8 } },
+  hard:   { h:{rows:13,cols:20}, v:{rows:20,cols:13} },
+};
+
+// ═══════════════════════════════════════════════
+// SOUNDS
+// ═══════════════════════════════════════════════
+function playOgg(id, vol) {
+  const s = document.getElementById(id); if(!s) return;
+  const c = s.cloneNode(); c.volume = vol||0.7; c.play().catch(()=>{});
+}
+function playClick()  { playOgg('clickSound', 0.7); }
+function playBtnSnd() { playOgg('btnSound',   0.6); }
+
+let _ac=null;
+function getAC(){ if(!_ac) _ac=new(window.AudioContext||window.webkitAudioContext)(); if(_ac.state==='suspended') _ac.resume(); return _ac; }
+function playSnap(){
+  try{
+    const ac=getAC();
+    [{f:880,d:0.07,v:0.22},{f:220,d:0.12,v:0.18}].forEach(({f,d,v})=>{
+      const o=ac.createOscillator(),g=ac.createGain();
+      o.connect(g);g.connect(ac.destination);o.type='sine';
+      o.frequency.setValueAtTime(f,ac.currentTime);
+      g.gain.setValueAtTime(v,ac.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+d);
+      o.start();o.stop(ac.currentTime+d);
+    });
+  }catch(e){}
+}
+document.addEventListener('click', e=>{ if(e.target.tagName==='BUTTON') playBtnSnd(); });
+
+// ═══════════════════════════════════════════════
+// PERSISTENCE
+// ═══════════════════════════════════════════════
+const DKEY = 'pzl2';
+function gd(){ try{return JSON.parse(localStorage.getItem(DKEY))||{};}catch(e){return{};} }
+function sd(d){ try{localStorage.setItem(DKEY,JSON.stringify(d));}catch(e){} }
+
+function getStars(){ return gd().stars||{}; }
+function getPuzzleStars(idx){ const s=(getStars()[idx])||{}; return{easy:!!s.easy,medium:!!s.medium,hard:!!s.hard}; }
+function awardStar(idx,diff){ const d=gd(); if(!d.stars)d.stars={}; if(!d.stars[idx])d.stars[idx]={}; d.stars[idx][diff]=true; sd(d); }
+function hasAnyStar(idx){ const s=getStars()[idx]||{}; return !!(s.easy||s.medium||s.hard); }
+function isUnlocked(idx){ return idx===1||hasAnyStar(idx-1); }
+function anyStarEarned(){ return Object.keys(getStars()).length>0; }
+
+function hasSave(){ const d=gd(); return !!(d.save&&d.save.pieces); }
+function clearSave(){ const d=gd(); delete d.save; sd(d); }
+function saveGame(pidx){
+  const d=gd();
+  d.save={pidx,difficulty,orientation,rows:ROWS,cols:COLS,imgW:IMG_W,imgH:IMG_H,
+    timerSeconds,solvedCount,hEdges,vEdges,
+    pieces:pieces.map(p=>({r:p.r,c:p.c,x:p.x,y:p.y,solved:p.solved}))};
+  sd(d);
+}
+function loadSave(){
+  try{
+    const s=gd().save; if(!s||!s.pieces) return false;
+    curIdx=s.pidx||1; difficulty=s.difficulty||'easy'; orientation=s.orientation||'horizontal';
+    ROWS=s.rows;COLS=s.cols;IMG_W=s.imgW;IMG_H=s.imgH;
+    hEdges=s.hEdges;vEdges=s.vEdges;
+    timerSeconds=s.timerSeconds||0;solvedCount=s.solvedCount||0;
+    recalcLayout();
+    pieces=s.pieces.map(p=>({r:p.r,c:p.c,x:p.x,y:p.y,
+      targetX:GRID_X+p.c*PIECE_W,targetY:GRID_Y+p.r*PIECE_H,solved:p.solved}));
+    return true;
+  }catch(e){clearSave();return false;}
+}
+
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)||window.innerWidth<900;
+let curIdx=1, difficulty='easy', orientation='horizontal', gameRunning=false;
+let ROWS,COLS,PIECE_W,PIECE_H,TAB,SNAP,GRID_X,GRID_Y,GRID_W,GRID_H,IMG_W,IMG_H;
+let pieces=[],hEdges=[],vEdges=[];
+let dragging=null,dragOffX=0,dragOffY=0,dragMoved=false;
+let solvedCount=0,showBorders=true;
+let timerInterval=null,timerSeconds=0;
+let rafId=null,needsRender=false;
+const imgCanvas=document.createElement('canvas');
+const imgCtx=imgCanvas.getContext('2d');
+let pieceCache=[];
+
+// ═══════════════════════════════════════════════
+// LAYOUT
+// ═══════════════════════════════════════════════
+function recalcLayout(){
+  const wrap=document.getElementById('canvasWrap');
+  const vw=(wrap&&wrap.clientWidth)||window.innerWidth;
+  const vh=(wrap&&wrap.clientHeight)||(window.innerHeight-40);
+  canvas.width=vw;canvas.height=vh;
+  canvas.style.width=vw+'px';canvas.style.height=vh+'px';
+  const asp=IMG_W/IMG_H;
+  let gW=vw-12,gH=gW/asp;
+  if(gH>vh-12){gH=vh-12;gW=gH*asp;}
+  PIECE_W=Math.floor(gW/COLS);PIECE_H=Math.floor(gH/ROWS);
+  GRID_W=PIECE_W*COLS;GRID_H=PIECE_H*ROWS;
+  GRID_X=Math.floor((vw-GRID_W)/2);GRID_Y=Math.floor((vh-GRID_H)/2);
+  TAB=Math.round(Math.min(PIECE_W,PIECE_H)*0.22);SNAP=Math.round(TAB*0.8);
+}
+function pname(idx,orient){ return `puzzle_${String(idx).padStart(2,'0')}_${orient}`; }
+
+// ═══════════════════════════════════════════════
+// MENU
+// ═══════════════════════════════════════════════
+function setMenuBg(o){
+  const bg=document.getElementById('menuBg');
+  const f=o==='horizontal'?'background_horizontal':'background_vertical';
+  bg.style.backgroundImage=`url('${f}.jpg'),url('${f}.png'),url('${f}.webp')`;
+}
+function showMenu(){
+  document.getElementById('gallery').style.display='none';
+  document.getElementById('game').style.display='none';
+  document.getElementById('menu').style.display='flex';
+  document.getElementById('btnContinue').style.display=hasSave()?'flex':'none';
+  setMenuBg(isMobile?'vertical':'horizontal');
+}
+function onNewGame(){
+  if(anyStarEarned()) showGallery();
+  else openOverlay(1);
+}
+function continueGame(){
+  const ok=loadSave(); if(!ok){onNewGame();return;}
+  document.getElementById('menu').style.display='none';
+  document.getElementById('game').style.display='flex';
+  loadImageThen(pname(curIdx,orientation),()=>{
+    hideWin();dragging=null;buildPieceCache();updateTimerDisplay();startTimer();scheduleRender();
+  });
+}
+
+// ═══════════════════════════════════════════════
+// GALLERY
+// ═══════════════════════════════════════════════
+function showGallery(){
+  document.getElementById('menu').style.display='none';
+  document.getElementById('gallery').style.display='flex';
+  buildGallery();
+}
+function buildGallery(){
+  const grid=document.getElementById('galleryGrid'); grid.innerHTML='';
+  const stars=getStars();
+  for(let i=1;i<=PUZZLE_COUNT;i++){
+    const unlocked=isUnlocked(i);
+    const ps=stars[i]||{};
+    const card=document.createElement('div');
+    card.className='pcard'+(unlocked?' on':'');
+
+    const thumb=document.createElement('div'); thumb.className='pthumb';
+    if(unlocked){
+      const img=document.createElement('img');
+      img.src=pname(i,'horizontal')+'.jpg';
+      img.onerror=()=>{img.onerror=null;img.src=pname(i,'horizontal')+'.png';};
+      thumb.appendChild(img);
+    } else {
+      const lk=document.createElement('div'); lk.className='plock'; lk.textContent='🔒';
+      thumb.appendChild(lk);
+    }
+
+    const sr=document.createElement('div'); sr.className='pstars';
+    const DCOLS={easy:'#6dde6d',medium:'#f0c040',hard:'#f05050'};
+    ['easy','medium','hard'].forEach(d=>{
+      const s=document.createElement('span'); s.className='pstar';
+      s.textContent='★'; s.title=d.charAt(0).toUpperCase()+d.slice(1);
+      s.style.color=ps[d]?DCOLS[d]:'#3a3a3a';
+      if(ps[d]) s.style.textShadow=`0 0 6px ${DCOLS[d]}`;
+      sr.appendChild(s);
+    });
+
+    const nl=document.createElement('div'); nl.className='pnum';
+    nl.textContent='#'+String(i).padStart(2,'0');
+
+    card.appendChild(thumb); card.appendChild(sr); card.appendChild(nl);
+    if(unlocked) card.onclick=()=>openOverlay(i);
+    grid.appendChild(card);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// OVERLAY
+// ═══════════════════════════════════════════════
+function openOverlay(idx){
+  curIdx=idx;
+  const ps=getPuzzleStars(idx);
+  ['easy','medium','hard'].forEach(d=>{
+    const b=document.getElementById('ob-'+d);
+    if(b) b.textContent=ps[d]?' ✓':'';
+  });
+  document.getElementById('ovStep1').style.display='flex';
+  document.getElementById('ovStep2').style.display='none';
+  document.getElementById('overlay').style.display='flex';
+}
+function closeOverlay(){ document.getElementById('overlay').style.display='none'; }
+function ovBack(){ document.getElementById('ovStep1').style.display='flex'; document.getElementById('ovStep2').style.display='none'; }
+function ovDiff(d){
+  difficulty=d;
+  if(isMobile){ document.getElementById('ovStep1').style.display='none'; document.getElementById('ovStep2').style.display='flex'; }
+  else ovOrient('horizontal');
+}
+function ovOrient(o){
+  orientation=o; closeOverlay();
+  document.getElementById('menu').style.display='none';
+  document.getElementById('gallery').style.display='none';
+  document.getElementById('game').style.display='flex';
+  initGame();
+}
+
+// ═══════════════════════════════════════════════
+// GAME INIT
+// ═══════════════════════════════════════════════
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d',{alpha:false});
+
+function initGame(){
+  const cfg=DIFF_CFG[difficulty][orientation==='horizontal'?'h':'v'];
+  ROWS=cfg.rows;COLS=cfg.cols;
+  IMG_W=orientation==='horizontal'?1408:768;
+  IMG_H=orientation==='horizontal'?768:1408;
+  imgCanvas.width=IMG_W;imgCanvas.height=IMG_H;
+  recalcLayout();
+  loadImageThen(pname(curIdx,orientation),newGame);
+}
+function loadImageThen(name,cb){
+  const exts=['jpg','jpeg','png','webp']; let i=0;
+  const try_=()=>{
+    if(i>=exts.length){useFallback();cb();return;}
+    const im=new Image();
+    im.onload=()=>{
+      imgCtx.clearRect(0,0,IMG_W,IMG_H);
+      const sc=Math.max(IMG_W/im.width,IMG_H/im.height);
+      imgCtx.drawImage(im,(IMG_W-im.width*sc)/2,(IMG_H-im.height*sc)/2,im.width*sc,im.height*sc);
+      cb();
+    };
+    im.onerror=()=>{i++;try_();};
+    im.src=name+'.'+exts[i];
+  };
+  try_();
+}
+function useFallback(){
+  const g=imgCtx.createLinearGradient(0,0,IMG_W,IMG_H);
+  g.addColorStop(0,'#1a4a7a');g.addColorStop(0.5,'#2d8a5a');g.addColorStop(1,'#7a3a1a');
+  imgCtx.fillStyle=g;imgCtx.fillRect(0,0,IMG_W,IMG_H);
+}
+
+// ═══════════════════════════════════════════════
+// EDGES
+// ═══════════════════════════════════════════════
+function buildEdges(){
+  hEdges=Array.from({length:ROWS-1},()=>Array.from({length:COLS},()=>Math.random()>0.5?1:-1));
+  vEdges=Array.from({length:ROWS},  ()=>Array.from({length:COLS-1},()=>Math.random()>0.5?1:-1));
+}
+function edgeType(r,c,side){
+  if(side===0) return r===0?0:-hEdges[r-1][c];
+  if(side===1) return c===COLS-1?0:vEdges[r][c];
+  if(side===2) return r===ROWS-1?0:hEdges[r][c];
+  if(side===3) return c===0?0:-vEdges[r][c-1];
+}
+
+// ═══════════════════════════════════════════════
+// PATH
+// ═══════════════════════════════════════════════
+function buildPath(p,c2){
+  c2=c2||ctx;
+  const top=edgeType(p.r,p.c,0),rt=edgeType(p.r,p.c,1),
+        bt=edgeType(p.r,p.c,2),lt=edgeType(p.r,p.c,3);
+  c2.beginPath();c2.moveTo(p.x,p.y);
+  drawEdge(c2,p.x,p.y,p.x+PIECE_W,p.y,top*-1,'H');
+  drawEdge(c2,p.x+PIECE_W,p.y,p.x+PIECE_W,p.y+PIECE_H,rt,'V');
+  drawEdge(c2,p.x+PIECE_W,p.y+PIECE_H,p.x,p.y+PIECE_H,bt,'H');
+  drawEdge(c2,p.x,p.y+PIECE_H,p.x,p.y,lt*-1,'V');
+  c2.closePath();
+}
+function drawEdge(c2,x1,y1,x2,y2,type,axis){
+  if(type===0){c2.lineTo(x2,y2);return;}
+  const T=TAB,n=type,nW=T*0.6,hH=T*0.7,hR=T*0.4;
+  if(axis==='H'){
+    const mx=(x1+x2)/2,y=y1,sg=x2>x1?1:-1;
+    c2.lineTo(mx-sg*T*0.65,y);
+    c2.bezierCurveTo(mx-sg*nW,y,mx-sg*nW,y+n*(hH-hR*1.2),mx-sg*nW,y+n*(hH-hR*1.2));
+    c2.bezierCurveTo(mx-sg*nW,y+n*(hH+hR*0.4),mx-sg*hR,y+n*(hH+hR),mx,y+n*(hH+hR));
+    c2.bezierCurveTo(mx+sg*hR,y+n*(hH+hR),mx+sg*nW,y+n*(hH+hR*0.4),mx+sg*nW,y+n*(hH-hR*1.2));
+    c2.bezierCurveTo(mx+sg*nW,y,mx+sg*T*0.65,y,mx+sg*T*0.65,y);
+    c2.lineTo(x2,y2);
+  } else {
+    const my=(y1+y2)/2,x=x1,sg=y2>y1?1:-1;
+    c2.lineTo(x,my-sg*T*0.65);
+    c2.bezierCurveTo(x,my-sg*nW,x+n*(hH-hR*1.2),my-sg*nW,x+n*(hH-hR*1.2),my-sg*nW);
+    c2.bezierCurveTo(x+n*(hH+hR*0.4),my-sg*nW,x+n*(hH+hR),my-sg*hR,x+n*(hH+hR),my);
+    c2.bezierCurveTo(x+n*(hH+hR),my+sg*hR,x+n*(hH+hR*0.4),my+sg*nW,x+n*(hH-hR*1.2),my+sg*nW);
+    c2.bezierCurveTo(x,my+sg*nW,x,my+sg*T*0.65,x,my+sg*T*0.65);
+    c2.lineTo(x2,y2);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// PIECE CACHE
+// ═══════════════════════════════════════════════
+function renderPiece(r,c,shadow,blur,ox,oy,withBevel){
+  const pad=Math.ceil(TAB*1.6),cw=PIECE_W+pad*2,ch=PIECE_H+pad*2;
+  const M=TAB*1.72,srcW=IMG_W/COLS,srcH=IMG_H/ROWS;
+  const fp={r,c,x:pad,y:pad};
+  const cv=document.createElement('canvas');cv.width=cw;cv.height=ch;
+  const cx=cv.getContext('2d');
+  buildPath(fp,cx);
+  cx.shadowColor=shadow;cx.shadowBlur=blur;cx.shadowOffsetX=ox;cx.shadowOffsetY=oy;
+  cx.fillStyle='rgba(0,0,0,0.01)';cx.fill();
+  cx.shadowBlur=0;cx.shadowOffsetX=0;cx.shadowOffsetY=0;
+  buildPath(fp,cx);cx.save();cx.clip();
+  cx.drawImage(imgCanvas,c*srcW-(M/PIECE_W)*srcW,r*srcH-(M/PIECE_H)*srcH,
+    srcW*(1+2*M/PIECE_W),srcH*(1+2*M/PIECE_H),fp.x-M,fp.y-M,PIECE_W+2*M,PIECE_H+2*M);
+  if(withBevel){
+    const gl=cx.createLinearGradient(fp.x,fp.y,fp.x+PIECE_W,fp.y+PIECE_H);
+    gl.addColorStop(0,'rgba(255,255,255,0.13)');
+    gl.addColorStop(0.4,'rgba(255,255,255,0.04)');
+    gl.addColorStop(1,'rgba(0,0,0,0.18)');
+    cx.fillStyle=gl;cx.fill();
+  }
+  cx.restore();
+  if(withBevel){
+    cx.save();
+    cx.translate(1.5,1.5);buildPath(fp,cx);cx.translate(-1.5,-1.5);
+    cx.strokeStyle='rgba(0,0,0,0.45)';cx.lineWidth=2;cx.stroke();
+    cx.translate(-1,-1);buildPath(fp,cx);cx.translate(1,1);
+    cx.strokeStyle='rgba(255,255,255,0.55)';cx.lineWidth=1.5;cx.stroke();
+    buildPath(fp,cx);cx.strokeStyle='rgba(0,0,0,0.25)';cx.lineWidth=1;cx.stroke();
+    cx.restore();
+  }
+  return {cv, pad:Math.ceil(TAB*1.6)};
+}
+function buildPieceCache(){
+  pieceCache=[];
+  for(let r=0;r<ROWS;r++){
+    pieceCache[r]=[];
+    for(let c=0;c<COLS;c++){
+      const n=renderPiece(r,c,'rgba(0,0,0,0.5)',isMobile?3:6,2,3,!isMobile);
+      const d=renderPiece(r,c,'rgba(0,0,0,0.6)',isMobile?6:18,5,7,!isMobile);
+      pieceCache[r][c]={normal:n.cv,drag:d.cv,pad:n.pad};
+    }
+  }
+}
+function buildNoBorderCache(){
+  const pad=Math.ceil(TAB*1.6);
+  const srcW=IMG_W/COLS, srcH=IMG_H/ROWS;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const cw=PIECE_W+pad*2, ch=PIECE_H+pad*2;
+    const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch;
+    const cx=cv.getContext('2d');
+    cx.drawImage(imgCanvas, c*srcW, r*srcH, srcW, srcH, pad, pad, PIECE_W, PIECE_H);
+    pieceCache[r][c].normal=cv; pieceCache[r][c].drag=cv;
+  }
+}
+function drawPiece(p){
+  const ca=pieceCache[p.r]&&pieceCache[p.r][p.c]; if(!ca) return;
+  ctx.drawImage(p===dragging?ca.drag:ca.normal,p.x-ca.pad,p.y-ca.pad);
+}
+
+// ═══════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════
+function render(){
+  ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++)
+    ctx.strokeRect(GRID_X+c*PIECE_W,GRID_Y+r*PIECE_H,PIECE_W,PIECE_H);
+  ctx.setLineDash([]);
+  ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2;
+  ctx.strokeRect(GRID_X,GRID_Y,GRID_W,GRID_H);
+  ctx.restore();
+  [...pieces.filter(p=>p!==dragging),...(dragging?[dragging]:[])].forEach(drawPiece);
+  document.getElementById('counter').textContent=`${solvedCount} / ${ROWS*COLS}`;
+  needsRender=false;
+}
+function scheduleRender(){ if(!needsRender){needsRender=true;rafId=requestAnimationFrame(render);} }
+
+// ═══════════════════════════════════════════════
+// GAME LOGIC
+// ═══════════════════════════════════════════════
+function newGame(){
+  hideWin();solvedCount=0;showBorders=true;dragging=null;
+  buildEdges();pieces=[];
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    pieces.push({r,c,
+      x:GRID_X+TAB+Math.random()*(GRID_W-PIECE_W-TAB*2),
+      y:GRID_Y+TAB+Math.random()*(GRID_H-PIECE_H-TAB*2),
+      targetX:GRID_X+c*PIECE_W,targetY:GRID_Y+r*PIECE_H,solved:false});
+  }
+  buildPieceCache();
+  stopTimer();timerSeconds=0;updateTimerDisplay();startTimer();scheduleRender();
+}
+function clampToBoard(p){
+  const mo=0.25;
+  p.x=Math.max(GRID_X-PIECE_W*mo,Math.min(GRID_X+GRID_W-PIECE_W*(1-mo),p.x));
+  p.y=Math.max(GRID_Y-PIECE_H*mo,Math.min(GRID_Y+GRID_H-PIECE_H*(1-mo),p.y));
+}
+function onDrop(){
+  if(!dragging) return;
+  clampToBoard(dragging);
+  const dx=dragging.x-dragging.targetX,dy=dragging.y-dragging.targetY;
+  if(Math.abs(dx)<SNAP&&Math.abs(dy)<SNAP){
+    dragging.x=dragging.targetX;dragging.y=dragging.targetY;
+    if(!dragging.solved){
+      dragging.solved=true;solvedCount++;
+      playSnap();saveGame(curIdx);bringBuriedToFront();
+      if(solvedCount===ROWS*COLS) onWin();
+    }
+  } else { if(dragMoved) playClick(); }
+  dragging=null;dragMoved=false;canvas.classList.remove('grabbing');scheduleRender();
+}
+function overlapFrac(a,b){
+  if(Math.abs(a.x-b.x)>PIECE_W||Math.abs(a.y-b.y)>PIECE_H) return 0;
+  const ix=Math.max(0,Math.min(a.x+PIECE_W,b.x+PIECE_W)-Math.max(a.x,b.x));
+  const iy=Math.max(0,Math.min(a.y+PIECE_H,b.y+PIECE_H)-Math.max(a.y,b.y));
+  return(ix*iy)/(PIECE_W*PIECE_H);
+}
+function bringBuriedToFront(){
+  const sp=pieces.filter(p=>p.solved),up=pieces.filter(p=>!p.solved);
+  up.forEach(u=>{
+    let cov=0;sp.forEach(s=>{cov+=overlapFrac(s,u);});
+    if(cov>=0.8){const i=pieces.indexOf(u);if(i!==-1){pieces.splice(i,1);pieces.push(u);}}
+  });
+}
+function hitTest(p,mx,my){
+  return mx>=p.x-TAB*0.3&&mx<=p.x+PIECE_W+TAB*0.3&&my>=p.y-TAB*0.3&&my<=p.y+PIECE_H+TAB*0.3;
+}
+
+// ═══════════════════════════════════════════════
+// WIN
+// ═══════════════════════════════════════════════
+function onWin(){
+  stopTimer(); const elapsed=timerSeconds;
+  clearSave(); awardStar(curIdx,difficulty);
+  document.getElementById('btnNext').style.display=curIdx<PUZZLE_COUNT?'inline-flex':'none';
+  setTimeout(()=>{
+    playOgg('winSound',1);
+    buildNoBorderCache();scheduleRender();
+    startConfetti();
+    setTimeout(()=>{
+      // Stars
+      const sr=document.getElementById('winStarRow'); sr.innerHTML='';
+      const ps=getPuzzleStars(curIdx);
+      const DC={easy:'#6dde6d',medium:'#f0c040',hard:'#f05050'};
+      ['easy','medium','hard'].forEach(d=>{
+        const s=document.createElement('span'); s.textContent='★';
+        if(ps[d]){s.style.color=DC[d];s.style.textShadow=`0 0 12px ${DC[d]}`;}
+        else s.style.color='#2a2a2a';
+        sr.appendChild(s);
+      });
+      // Time
+      const h=Math.floor(elapsed/3600),m=Math.floor((elapsed%3600)/60),s=elapsed%60;
+      const ts=h>0?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`;
+      document.getElementById('winTime').textContent=`Time: ${ts}`;
+      document.getElementById('winScreen').classList.add('active');
+      setTimeout(()=>document.getElementById('winBox').classList.add('show'),50);
+    },1000);
+  },200);
+}
+function hideWin(){
+  document.getElementById('winScreen').classList.remove('active');
+  document.getElementById('winBox').classList.remove('show');
+  stopConfetti();
+}
+function nextPuzzle(){
+  if(curIdx>=PUZZLE_COUNT) return;
+  curIdx++; hideWin(); clearSave(); initGame();
+}
+function goMenu(){
+  stopTimer();cancelAnimationFrame(rafId);gameRunning=false;
+  hideWin(); document.getElementById('game').style.display='none'; showMenu();
+}
+
+// ═══════════════════════════════════════════════
+// CONFETTI
+// ═══════════════════════════════════════════════
+const CC=document.getElementById('confettiCanvas'),CCX=CC.getContext('2d');
+let CP=[],CR=null;
+const CCOLS=['#f94144','#f3722c','#f8961e','#f9c74f','#90be6d','#43aa8b','#577590','#a8dadc','#e9c46a','#e76f51'];
+function startConfetti(){
+  CC.width=window.innerWidth;CC.height=window.innerHeight;CP=[];
+  for(let i=0;i<180;i++) CP.push({x:Math.random()*CC.width,y:-10-Math.random()*200,
+    vx:(Math.random()-0.5)*3,vy:2+Math.random()*4,w:6+Math.random()*8,h:4+Math.random()*6,
+    color:CCOLS[Math.floor(Math.random()*CCOLS.length)],rot:Math.random()*Math.PI*2,
+    rv:(Math.random()-0.5)*0.15,alpha:1});
+  animConf();
+}
+function animConf(){
+  CCX.clearRect(0,0,CC.width,CC.height);let alive=false;
+  CP.forEach(p=>{
+    p.x+=p.vx;p.y+=p.vy;p.rot+=p.rv;p.vy+=0.05;
+    if(p.y>CC.height*0.7) p.alpha-=0.015;
+    if(p.alpha>0){alive=true;CCX.save();CCX.globalAlpha=Math.max(0,p.alpha);
+    CCX.translate(p.x,p.y);CCX.rotate(p.rot);CCX.fillStyle=p.color;
+    CCX.fillRect(-p.w/2,-p.h/2,p.w,p.h);CCX.restore();}
+  });
+  if(alive) CR=requestAnimationFrame(animConf);
+  else CCX.clearRect(0,0,CC.width,CC.height);
+}
+function stopConfetti(){ cancelAnimationFrame(CR);CCX.clearRect(0,0,CC.width,CC.height);CP=[]; }
+
+// ═══════════════════════════════════════════════
+// TIMER
+// ═══════════════════════════════════════════════
+function startTimer(){gameRunning=true;timerInterval=setInterval(()=>{timerSeconds++;updateTimerDisplay();},1000);}
+function stopTimer(){gameRunning=false;clearInterval(timerInterval);timerInterval=null;}
+function updateTimerDisplay(){
+  const h=Math.floor(timerSeconds/3600),m=Math.floor((timerSeconds%3600)/60),s=timerSeconds%60;
+  document.getElementById('timer').textContent=
+    h>0?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${m}:${String(s).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════
+// INPUT
+// ═══════════════════════════════════════════════
+canvas.addEventListener('mousedown',e=>{
+  const mx=e.offsetX,my=e.offsetY;
+  for(let i=pieces.length-1;i>=0;i--){
+    const p=pieces[i];
+    if(!p.solved&&hitTest(p,mx,my)){
+      dragging=p;dragOffX=mx-p.x;dragOffY=my-p.y;dragMoved=false;
+      pieces.splice(i,1);pieces.push(p);canvas.classList.add('grabbing');playClick();break;
+    }
+  }
+});
+window.addEventListener('mousemove',e=>{
+  if(!dragging) return;
+  const r=canvas.getBoundingClientRect();
+  dragging.x=e.clientX-r.left-dragOffX;dragging.y=e.clientY-r.top-dragOffY;
+  dragMoved=true;scheduleRender();
+});
+window.addEventListener('mouseup',onDrop);
+canvas.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  const t=e.touches[0],r=canvas.getBoundingClientRect();
+  const mx=t.clientX-r.left,my=t.clientY-r.top;
+  for(let i=pieces.length-1;i>=0;i--){
+    const p=pieces[i];
+    if(!p.solved&&hitTest(p,mx,my)){
+      dragging=p;dragOffX=mx-p.x;dragOffY=my-p.y;dragMoved=false;
+      pieces.splice(i,1);pieces.push(p);playClick();break;
+    }
+  }
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  e.preventDefault();if(!dragging) return;
+  const t=e.touches[0],r=canvas.getBoundingClientRect();
+  dragging.x=t.clientX-r.left-dragOffX;dragging.y=t.clientY-r.top-dragOffY;
+  dragMoved=true;scheduleRender();
+},{passive:false});
+canvas.addEventListener('touchend',e=>{e.preventDefault();onDrop();},{passive:false});
+
+// ═══════════════════════════════════════════════
+// RESIZE
+// ═══════════════════════════════════════════════
+let _rt;
+function onResize(){
+  clearTimeout(_rt);_rt=setTimeout(()=>{
+    if(gameRunning){
+      // Zapamiętaj stary układ
+      const oldGX=GRID_X, oldGY=GRID_Y, oldPW=PIECE_W, oldPH=PIECE_H;
+
+      recalcLayout();
+
+      // Przelicz pozycje wszystkich puzzli na nowy układ
+      // Pozycja relative do siatki (jako ułamek PIECE_W/H) zostaje zachowana
+      if(oldPW>0 && oldPH>0 && pieces.length>0){
+        pieces.forEach(p=>{
+          // Aktualizuj pozycję docelową (zawsze deterministyczna)
+          p.targetX = GRID_X + p.c * PIECE_W;
+          p.targetY = GRID_Y + p.r * PIECE_H;
+
+          if(p.solved){
+            // Ułożone — przesuń dokładnie na nową pozycję docelową
+            p.x = p.targetX;
+            p.y = p.targetY;
+          } else {
+            // Nieułożone — zachowaj pozycję względną względem siatki
+            const relX = (p.x - oldGX) / oldPW;
+            const relY = (p.y - oldGY) / oldPH;
+            p.x = GRID_X + relX * PIECE_W;
+            p.y = GRID_Y + relY * PIECE_H;
+            // Upewnij się że nie wyszło poza planszę
+            clampToBoard(p);
+          }
+        });
+      }
+
+      buildPieceCache();
+      scheduleRender();
+    }
+    setMenuBg(isMobile?'vertical':'horizontal');
+  },250);
+}
+window.addEventListener('resize',onResize);
+window.addEventListener('orientationchange',()=>setTimeout(onResize,120));
+
+// ═══════════════════════════════════════════════
+// PREVIEW
+// ═══════════════════════════════════════════════
+function showPreview(e) {
+  if (e) e.preventDefault();
+  const img = document.getElementById('previewImg');
+  // Źródło: ten sam plik co aktualnie grana gra
+  const name = pname(curIdx, orientation);
+  const exts = ['jpg','jpeg','png','webp'];
+  // Ustaw src jeśli inny niż aktualny
+  let found = false;
+  const tryExt = (i) => {
+    if (i >= exts.length) return;
+    const src = name + '.' + exts[i];
+    // Zawsze ustaw — przeglądarka ma już w cache
+    img.src = src;
+  };
+  tryExt(0); // jpg jako pierwsze — w cache po loadImageThen
+  img.classList.add('show');
+}
+function hidePreview() {
+  document.getElementById('previewImg').classList.remove('show');
+}
+
+// ═══════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════
+showMenu();
+</script>
+</body>
+</html>
