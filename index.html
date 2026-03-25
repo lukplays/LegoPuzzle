@@ -282,9 +282,12 @@ function hasSave(){ const d=gd(); return !!(d.save&&d.save.pieces); }
 function clearSave(){ const d=gd(); delete d.save; sd(d); }
 function saveGame(pidx){
   const d=gd();
+  // Zapisuj pozycje jako ułamki względem GRID (żeby działały po resize/innym urządzeniu)
   d.save={pidx,difficulty,orientation,rows:ROWS,cols:COLS,imgW:IMG_W,imgH:IMG_H,
     timerSeconds,solvedCount,hEdges,vEdges,
-    pieces:pieces.map(p=>({r:p.r,c:p.c,x:p.x,y:p.y,solved:p.solved}))};
+    pieces:pieces.map(p=>({r:p.r,c:p.c,
+      rx:(p.x-GRID_X)/PIECE_W, ry:(p.y-GRID_Y)/PIECE_H,
+      solved:p.solved}))};
   sd(d);
 }
 function loadSave(){
@@ -295,7 +298,10 @@ function loadSave(){
     hEdges=s.hEdges;vEdges=s.vEdges;
     timerSeconds=s.timerSeconds||0;solvedCount=s.solvedCount||0;
     recalcLayout();
-    pieces=s.pieces.map(p=>({r:p.r,c:p.c,x:p.x,y:p.y,
+    pieces=s.pieces.map(p=>({r:p.r,c:p.c,
+      // Obsługa starego formatu (x,y) i nowego (rx,ry)
+      x: p.rx!==undefined ? GRID_X+p.rx*PIECE_W : p.x,
+      y: p.ry!==undefined ? GRID_Y+p.ry*PIECE_H : p.y,
       targetX:GRID_X+p.c*PIECE_W,targetY:GRID_Y+p.r*PIECE_H,solved:p.solved}));
     return true;
   }catch(e){clearSave();return false;}
@@ -609,12 +615,28 @@ function render(){
   ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.save();
   ctx.translate(vpX,vpY);ctx.scale(vpScale,vpScale);
+
+  // Strefa boczna — subtelne tło i ramka
+  if(PIECE_W>0){
+    const z=getZoneBounds();
+    const zW=z.maxX-z.minX+PIECE_W, zH=z.maxY-z.minY+PIECE_H;
+    ctx.fillStyle='rgba(255,255,255,0.025)';
+    ctx.fillRect(z.minX, z.minY, zW, zH);
+    ctx.strokeStyle='rgba(255,255,255,0.12)';
+    ctx.lineWidth=1.5/vpScale;
+    ctx.setLineDash([6/vpScale,5/vpScale]);
+    ctx.strokeRect(z.minX, z.minY, zW, zH);
+    ctx.setLineDash([]);
+  }
+
+  // Siatka główna
   ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1/vpScale;ctx.setLineDash([4/vpScale,4/vpScale]);
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++)
     ctx.strokeRect(GRID_X+c*PIECE_W,GRID_Y+r*PIECE_H,PIECE_W,PIECE_H);
   ctx.setLineDash([]);
   ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2/vpScale;
   ctx.strokeRect(GRID_X,GRID_Y,GRID_W,GRID_H);
+
   [...pieces.filter(p=>p!==dragging),...(dragging?[dragging]:[])].forEach(drawPiece);
   ctx.restore();
   document.getElementById('counter').textContent=`${solvedCount} / ${ROWS*COLS}`;
@@ -638,10 +660,24 @@ function newGame(){
   buildPieceCache();
   stopTimer();timerSeconds=0;updateTimerDisplay();startTimer();scheduleRender();
 }
+const ZONE_PADS=4; // liczba puzzli strefy bocznej z każdej strony
+function getZoneBounds(){
+  return {
+    minX: GRID_X - PIECE_W*ZONE_PADS,
+    maxX: GRID_X + GRID_W + PIECE_W*(ZONE_PADS-1),
+    minY: GRID_Y - PIECE_H*ZONE_PADS,
+    maxY: GRID_Y + GRID_H + PIECE_H*(ZONE_PADS-1)
+  };
+}
 function clampToBoard(p){
-  const mo=0.25;
-  p.x=Math.max(GRID_X-PIECE_W*mo,Math.min(GRID_X+GRID_W-PIECE_W*(1-mo),p.x));
-  p.y=Math.max(GRID_Y-PIECE_H*mo,Math.min(GRID_Y+GRID_H-PIECE_H*(1-mo),p.y));
+  const z=getZoneBounds();
+  p.x=Math.max(z.minX, Math.min(z.maxX, p.x));
+  p.y=Math.max(z.minY, Math.min(z.maxY, p.y));
+}
+let _saveDebounce=null;
+function scheduleSave(){
+  clearTimeout(_saveDebounce);
+  _saveDebounce=setTimeout(()=>saveGame(curIdx),2000);
 }
 function onDrop(){
   if(!dragging) return;
@@ -651,10 +687,13 @@ function onDrop(){
     dragging.x=dragging.targetX;dragging.y=dragging.targetY;
     if(!dragging.solved){
       dragging.solved=true;solvedCount++;
+      clearTimeout(_saveDebounce);
       playSnap();saveGame(curIdx);bringBuriedToFront();
       if(solvedCount===ROWS*COLS) onWin();
     }
-  } else { if(dragMoved) playClick(); }
+  } else {
+    if(dragMoved){ playClick(); scheduleSave(); }
+  }
   dragging=null;dragMoved=false;canvas.classList.remove('grabbing');scheduleRender();
 }
 function overlapFrac(a,b){
@@ -911,16 +950,14 @@ function onResize(){
           p.targetY = GRID_Y + p.r * PIECE_H;
 
           if(p.solved){
-            // Ułożone — przesuń dokładnie na nową pozycję docelową
             p.x = p.targetX;
             p.y = p.targetY;
           } else {
-            // Nieułożone — zachowaj pozycję względną względem siatki
+            // Zachowaj pozycję względną względem siatki (działa też dla strefy bocznej)
             const relX = (p.x - oldGX) / oldPW;
             const relY = (p.y - oldGY) / oldPH;
             p.x = GRID_X + relX * PIECE_W;
             p.y = GRID_Y + relY * PIECE_H;
-            // Upewnij się że nie wyszło poza planszę
             clampToBoard(p);
           }
         });
