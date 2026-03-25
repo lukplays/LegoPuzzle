@@ -188,6 +188,7 @@ html, body { width:100%; height:100%; overflow:hidden; font-family:'Segoe UI',sa
 <div id="game">
   <div id="ui">
     <button class="ui-btn" onclick="goMenu()">☰ Menu</button>
+    <button class="ui-btn" onclick="resetViewport();scheduleRender();" title="Reset zoom (dwuklik)">⊙</button>
     <button class="ui-btn" id="btnPreview"
       style="font-size:16px; padding:2px 10px; line-height:1;"
       onmousedown="showPreview()" onmouseup="hidePreview()" onmouseleave="hidePreview()"
@@ -311,6 +312,13 @@ let dragging=null,dragOffX=0,dragOffY=0,dragMoved=false;
 let solvedCount=0,showBorders=true;
 let timerInterval=null,timerSeconds=0;
 let rafId=null,needsRender=false;
+
+// ── VIEWPORT (zoom/pan) ──
+let vpX=0,vpY=0,vpScale=1;
+const VP_MIN=0.3,VP_MAX=5;
+function screenToWorld(sx,sy){ return {x:(sx-vpX)/vpScale, y:(sy-vpY)/vpScale}; }
+function worldToScreen(wx,wy){ return {x:wx*vpScale+vpX, y:wy*vpScale+vpY}; }
+function resetViewport(){vpX=0;vpY=0;vpScale=1;}
 const imgCanvas=document.createElement('canvas');
 const imgCtx=imgCanvas.getContext('2d');
 let pieceCache=[];
@@ -363,7 +371,7 @@ function continueGame(){
   const myGen=++_loadGen;
   loadImageThen(pname(curIdx,orientation),()=>{
     if(myGen!==_loadGen) return;
-    hideWin();dragging=null;buildPieceCache();updateTimerDisplay();startTimer();scheduleRender();
+    resetViewport();hideWin();dragging=null;buildPieceCache();updateTimerDisplay();startTimer();scheduleRender();
   });
 }
 
@@ -600,14 +608,15 @@ function drawPiece(p){
 function render(){
   ctx.fillStyle='#1a1a2e';ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.save();
-  ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.translate(vpX,vpY);ctx.scale(vpScale,vpScale);
+  ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1/vpScale;ctx.setLineDash([4/vpScale,4/vpScale]);
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++)
     ctx.strokeRect(GRID_X+c*PIECE_W,GRID_Y+r*PIECE_H,PIECE_W,PIECE_H);
   ctx.setLineDash([]);
-  ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2;
+  ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=2/vpScale;
   ctx.strokeRect(GRID_X,GRID_Y,GRID_W,GRID_H);
-  ctx.restore();
   [...pieces.filter(p=>p!==dragging),...(dragging?[dragging]:[])].forEach(drawPiece);
+  ctx.restore();
   document.getElementById('counter').textContent=`${solvedCount} / ${ROWS*COLS}`;
   needsRender=false;
 }
@@ -618,6 +627,7 @@ function scheduleRender(){ if(!needsRender){needsRender=true;rafId=requestAnimat
 // ═══════════════════════════════════════════════
 function newGame(){
   hideWin();solvedCount=0;showBorders=true;dragging=null;
+  resetViewport();
   buildEdges();pieces=[];
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     pieces.push({r,c,
@@ -749,49 +759,135 @@ function updateTimerDisplay(){
 }
 
 // ═══════════════════════════════════════════════
-// INPUT
-// ═══════════════════════════════════════════════
-// ═══════════════════════════════════════════════
-// INPUT — Pointer Events (niższa latencja niż touch/mouse)
+// INPUT — Pointer Events + Zoom/Pan
 // ═══════════════════════════════════════════════
 canvas.style.touchAction='none';
+
+const activePointers=new Map();
+let lastPinchDist=null, lastPinchMid=null;
+let panning=false, panStartX=0, panStartY=0, panStartVpX=0, panStartVpY=0;
+
+function applyZoom(scale, originX, originY){
+  const newScale=Math.max(VP_MIN,Math.min(VP_MAX, vpScale*scale));
+  const factor=newScale/vpScale;
+  vpX=originX-(originX-vpX)*factor;
+  vpY=originY-(originY-vpY)*factor;
+  vpScale=newScale;
+}
 
 canvas.addEventListener('pointerdown',e=>{
   e.preventDefault();
   canvas.setPointerCapture(e.pointerId);
+  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+
+  if(activePointers.size>=2){
+    if(dragging){ dragging=null; dragMoved=false; }
+    return;
+  }
+
   const r=canvas.getBoundingClientRect();
-  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  const sx=e.clientX-r.left, sy=e.clientY-r.top;
+  const w=screenToWorld(sx,sy);
+
   for(let i=pieces.length-1;i>=0;i--){
     const p=pieces[i];
-    if(!p.solved&&hitTest(p,mx,my)){
-      dragging=p;dragOffX=mx-p.x;dragOffY=my-p.y;dragMoved=false;
+    if(!p.solved&&hitTest(p,w.x,w.y)){
+      dragging=p;
+      dragOffX=w.x-p.x;dragOffY=w.y-p.y;dragMoved=false;
       pieces.splice(i,1);pieces.push(p);
       if(e.pointerType==='mouse') canvas.classList.add('grabbing');
-      playClick();break;
+      playClick();return;
     }
   }
+  panning=true;
+  panStartX=e.clientX;panStartY=e.clientY;
+  panStartVpX=vpX;panStartVpY=vpY;
 });
 
 canvas.addEventListener('pointermove',e=>{
-  if(!dragging) return;
   e.preventDefault();
+  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+
   const r=canvas.getBoundingClientRect();
-  dragging.x=e.clientX-r.left-dragOffX;
-  dragging.y=e.clientY-r.top-dragOffY;
+
+  if(activePointers.size>=2){
+    panning=false;
+    const pts=[...activePointers.values()];
+    const dx=pts[0].x-pts[1].x, dy=pts[0].y-pts[1].y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    const midX=(pts[0].x+pts[1].x)/2-r.left;
+    const midY=(pts[0].y+pts[1].y)/2-r.top;
+    if(lastPinchDist!==null){
+      applyZoom(dist/lastPinchDist, midX, midY);
+      if(lastPinchMid){
+        vpX+=midX-lastPinchMid.x;
+        vpY+=midY-lastPinchMid.y;
+      }
+    }
+    lastPinchDist=dist;
+    lastPinchMid={x:midX,y:midY};
+    if(!needsRender){needsRender=true;rafId=requestAnimationFrame(render);}
+    return;
+  }
+  lastPinchDist=null;lastPinchMid=null;
+
+  if(panning&&!dragging){
+    vpX=panStartVpX+(e.clientX-panStartX);
+    vpY=panStartVpY+(e.clientY-panStartY);
+    if(!needsRender){needsRender=true;rafId=requestAnimationFrame(render);}
+    return;
+  }
+
+  if(!dragging) return;
+  const sx=e.clientX-r.left, sy=e.clientY-r.top;
+  const w=screenToWorld(sx,sy);
+  dragging.x=w.x-dragOffX;
+  dragging.y=w.y-dragOffY;
   dragMoved=true;
-  if(!needsRender){ needsRender=true; rafId=requestAnimationFrame(render); }
+  if(!needsRender){needsRender=true;rafId=requestAnimationFrame(render);}
 });
 
 canvas.addEventListener('pointerup',e=>{
   canvas.releasePointerCapture(e.pointerId);
+  activePointers.delete(e.pointerId);
+  if(activePointers.size<2){lastPinchDist=null;lastPinchMid=null;}
   canvas.classList.remove('grabbing');
+  panning=false;
   onDrop();
 });
 
 canvas.addEventListener('pointercancel',e=>{
   canvas.releasePointerCapture(e.pointerId);
+  activePointers.delete(e.pointerId);
+  lastPinchDist=null;lastPinchMid=null;
   canvas.classList.remove('grabbing');
+  panning=false;
   dragging=null;dragMoved=false;scheduleRender();
+});
+
+canvas.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  const ox=e.clientX-r.left, oy=e.clientY-r.top;
+  const factor=e.deltaY<0?1.1:1/1.1;
+  applyZoom(factor,ox,oy);
+  scheduleRender();
+},{passive:false});
+
+canvas.addEventListener('dblclick',e=>{
+  if(dragging) return;
+  const startX=vpX,startY=vpY,startS=vpScale;
+  const t0=performance.now();
+  function animReset(t){
+    const p=Math.min(1,(t-t0)/220);
+    const q=1-(1-p)*(1-p);
+    vpScale=startS+(1-startS)*q;
+    vpX=startX+(0-startX)*q;
+    vpY=startY+(0-startY)*q;
+    needsRender=true;render();
+    if(p<1) requestAnimationFrame(animReset);
+  }
+  requestAnimationFrame(animReset);
 });
 
 // ═══════════════════════════════════════════════
