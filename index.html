@@ -251,7 +251,7 @@ function getAC(){ if(!_ac) _ac=new(window.AudioContext||window.webkitAudioContex
 function playSnap(){
   try{
     const ac=getAC();
-    [{f:880,d:0.07,v:0.22},{f:220,d:0.12,v:0.18}].forEach(({f,d,v})=>{
+    [{f:880,d:0.07,v:0.8},{f:220,d:0.12,v:0.8}].forEach(({f,d,v})=>{
       const o=ac.createOscillator(),g=ac.createGain();
       o.connect(g);g.connect(ac.destination);o.type='sine';
       o.frequency.setValueAtTime(f,ac.currentTime);
@@ -751,42 +751,48 @@ function updateTimerDisplay(){
 // ═══════════════════════════════════════════════
 // INPUT
 // ═══════════════════════════════════════════════
-canvas.addEventListener('mousedown',e=>{
-  const mx=e.offsetX,my=e.offsetY;
-  for(let i=pieces.length-1;i>=0;i--){
-    const p=pieces[i];
-    if(!p.solved&&hitTest(p,mx,my)){
-      dragging=p;dragOffX=mx-p.x;dragOffY=my-p.y;dragMoved=false;
-      pieces.splice(i,1);pieces.push(p);canvas.classList.add('grabbing');playClick();break;
-    }
-  }
-});
-window.addEventListener('mousemove',e=>{
-  if(!dragging) return;
-  const r=canvas.getBoundingClientRect();
-  dragging.x=e.clientX-r.left-dragOffX;dragging.y=e.clientY-r.top-dragOffY;
-  dragMoved=true;scheduleRender();
-});
-window.addEventListener('mouseup',onDrop);
-canvas.addEventListener('touchstart',e=>{
+// ═══════════════════════════════════════════════
+// INPUT — Pointer Events (niższa latencja niż touch/mouse)
+// ═══════════════════════════════════════════════
+canvas.style.touchAction='none';
+
+canvas.addEventListener('pointerdown',e=>{
   e.preventDefault();
-  const t=e.touches[0],r=canvas.getBoundingClientRect();
-  const mx=t.clientX-r.left,my=t.clientY-r.top;
+  canvas.setPointerCapture(e.pointerId);
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
   for(let i=pieces.length-1;i>=0;i--){
     const p=pieces[i];
     if(!p.solved&&hitTest(p,mx,my)){
       dragging=p;dragOffX=mx-p.x;dragOffY=my-p.y;dragMoved=false;
-      pieces.splice(i,1);pieces.push(p);playClick();break;
+      pieces.splice(i,1);pieces.push(p);
+      if(e.pointerType==='mouse') canvas.classList.add('grabbing');
+      playClick();break;
     }
   }
-},{passive:false});
-canvas.addEventListener('touchmove',e=>{
-  e.preventDefault();if(!dragging) return;
-  const t=e.touches[0],r=canvas.getBoundingClientRect();
-  dragging.x=t.clientX-r.left-dragOffX;dragging.y=t.clientY-r.top-dragOffY;
-  dragMoved=true;scheduleRender();
-},{passive:false});
-canvas.addEventListener('touchend',e=>{e.preventDefault();onDrop();},{passive:false});
+});
+
+canvas.addEventListener('pointermove',e=>{
+  if(!dragging) return;
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect();
+  dragging.x=e.clientX-r.left-dragOffX;
+  dragging.y=e.clientY-r.top-dragOffY;
+  dragMoved=true;
+  if(!needsRender){ needsRender=true; rafId=requestAnimationFrame(render); }
+});
+
+canvas.addEventListener('pointerup',e=>{
+  canvas.releasePointerCapture(e.pointerId);
+  canvas.classList.remove('grabbing');
+  onDrop();
+});
+
+canvas.addEventListener('pointercancel',e=>{
+  canvas.releasePointerCapture(e.pointerId);
+  canvas.classList.remove('grabbing');
+  dragging=null;dragMoved=false;scheduleRender();
+});
 
 // ═══════════════════════════════════════════════
 // RESIZE
